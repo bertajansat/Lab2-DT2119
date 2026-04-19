@@ -1,7 +1,5 @@
 import numpy as np
-from lab2_tools import *
-from prondict import prondict
-import matplotlib.pyplot as plt
+# from tools2 import *
 
 # already implemented
 def concatTwoHMMs(hmm1, hmm2):
@@ -115,22 +113,6 @@ def forward(log_emlik, log_startprob, log_transmat):
     Output:
         forward_prob: NxM array of forward log probabilities for each of the M states in the model
     """
-    logalpha = np.zeros((log_emlik.shape))
-
-    # Initialization
-    logalpha[0] = log_startprob + log_emlik[0]
-
-    # Update
-    for i in range(1, len(log_emlik)):
-        for j in range(len(log_emlik[0])):
-            logalpha[i, j] = log_emlik[i, j] + logsumexp(
-                logalpha[i-1] + log_transmat[:, j]
-            )
-
-    return logalpha
-
-
-
 
 def backward(log_emlik, log_startprob, log_transmat):
     """Backward (beta) probabilities in log domain.
@@ -186,68 +168,3 @@ def updateMeanAndVar(X, log_gamma, varianceFloor=5.0):
          means: MxD mean vectors for each state
          covars: MxD covariance (variance) vectors for each state
     """
-
-
-
-## MAIN CODE
-
-data = np.load('lab2_data.npz', allow_pickle=True)['data']
-
-## 4
-# Load model files
-phoneHMMs = np.load('lab2_models_onespkr.npz', allow_pickle=True)['phoneHMMs'].item()
-
-#print(list(sorted(phoneHMMs.keys())))
-#print(phoneHMMs['ah'].keys())
-
-
-isolated = {}
-for digit in prondict.keys():
-    isolated[digit] = ['sil'] + prondict[digit] + ['sil']
-
-wordHMMs = {}
-wordHMMs['o'] = concatHMMs(phoneHMMs, isolated['o'])
-
-# Load example
-example = np.load('lab2_example.npz', allow_pickle=True)['example'].item()
-
-## 5.1 
-
-hmm=wordHMMs['o'] 
-lpr = log_multivariate_normal_density_diag(example['lmfcc'],hmm['means'],hmm['covars']) # Log probability of each observation X comes from each HMM (for word o) state
-
-comp_equal=np.allclose(lpr, example['obsloglik']) # True if both arrays are almost equal, with a given tolerance
-
-print(f'\n**log_mulivariate_normal_density_diag() and example[obsloglik] give very simmilar results: {comp_equal}')
-
-# log probability of given word under gaussian states of HMM for that digit
-
-for digit in list(sorted(prondict.keys())):
-
-    wordHMMs[digit] = concatHMMs(phoneHMMs, isolated[digit])
-    hmm_digit = wordHMMs[digit]
-
-    loglik = log_multivariate_normal_density_diag(
-        example['lmfcc'],
-        hmm_digit['means'],
-        hmm_digit['covars']
-    )
-    """
-    plt.imshow(loglik.T, aspect='auto', origin='lower')
-    plt.title(f"Log-likelihood for frame and state (digit {digit})")
-    plt.xlabel("Frames")
-    plt.ylabel("HMM states")
-    plt.colorbar()
-    plt.show()   # REVISAR
-    """
-
-# 5.2
-
-print(hmm['startprob'].shape)
-print(hmm['transmat'].shape)
-print(example['obsloglik'].shape)
-forward_logalpha = forward(example['obsloglik'],hmm['startprob'],hmm['transmat'])
-
-comp_equal=np.allclose(forward_logalpha, example['logalpha']) # True if both arrays are almost equal, with a given tolerance
-
-print(f'\n**forward() output and example[logalpha] give very simmilar results: {comp_equal}')
