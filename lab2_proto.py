@@ -1,6 +1,7 @@
 import numpy as np
 # from tools2 import *
 
+
 # already implemented
 def concatTwoHMMs(hmm1, hmm2):
     """ Concatenates 2 HMM models
@@ -16,11 +17,11 @@ def concatTwoHMMs(hmm1, hmm2):
     D is the dimension of the feature vectors
     M is the number of emitting states in each HMM model (could be different for each)
 
-    Output
+    Output:
        dictionary with the same keys as the input but concatenated models:
           startprob: K+1 array with priori probability of state
           transmat: (K+1)x(K+1) transition matrix
-             means: KxD array of mean vectors
+            means: KxD array of mean vectors
             covars: KxD array of variances
 
     K is the sum of the number of emitting states from the input models
@@ -30,15 +31,15 @@ def concatTwoHMMs(hmm1, hmm2):
 
     See also: the concatenating_hmms.pdf document in the lab package
     """
-    num_states_hmm1 = len(hmm1['startprob'])-1
-    num_states_hmm2 = len(hmm2['startprob'])-1
-    num_states_concat = num_states_hmm1+num_states_hmm2+1
+    num_states_hmm1 = len(hmm1['startprob']) - 1
+    num_states_hmm2 = len(hmm2['startprob']) - 1
+    num_states_concat = num_states_hmm1 + num_states_hmm2 + 1
     
-    startprob = np.concatenate((hmm1['startprob'],hmm2['startprob'][1:]))
+    startprob = np.concatenate((hmm1['startprob'], hmm2['startprob'][1:]))
 
-    transmat = np.zeros((num_states_concat,num_states_concat))
-    transmat[:num_states_hmm1+1,:num_states_hmm1+1] = hmm1['transmat']
-    transmat[num_states_hmm1:,num_states_hmm1:] = hmm2['transmat']
+    transmat = np.zeros((num_states_concat, num_states_concat))
+    transmat[:num_states_hmm1+1, :num_states_hmm1+1] = hmm1['transmat']
+    transmat[num_states_hmm1:, num_states_hmm1:] = hmm2['transmat']
 
     means = np.concatenate((hmm1['means'], hmm2['means']), axis=0)
 
@@ -84,8 +85,10 @@ def concatHMMs(hmmmodels, namelist):
        wordHMMs['o'] = concatHMMs(phoneHMMs, ['sil', 'ow', 'sil'])
     """
     concat = hmmmodels[namelist[0]]
-    for idx in range(1,len(namelist)):
+
+    for idx in range(1, len(namelist)):
         concat = concatTwoHMMs(concat, hmmmodels[namelist[idx]])
+
     return concat
 
 
