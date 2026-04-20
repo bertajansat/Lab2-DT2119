@@ -161,6 +161,32 @@ def viterbi(log_emlik, log_startprob, log_transmat, forceFinalState=True):
         viterbi_path: best path
     """
 
+    N, M = log_emlik.shape
+    viterbi_loglik = np.zeros((N, M))
+    backptr = np.zeros((N, M), dtype=int)
+
+    # Initialization
+    viterbi_loglik[0] = log_startprob + log_emlik[0]
+    # Recursion
+    for t in range(1, N):
+        for j in range(M):
+            viterbi_loglik[t, j] = log_emlik[t, j] + np.max(viterbi_loglik[t-1]+log_transmat[:M, j])
+            backptr[t,j] = np.argmax(viterbi_loglik[t-1]+log_transmat[:M, j])
+
+    # Backtracking:
+    viterbi_path = np.zeros(N, dtype=int)
+    if forceFinalState:
+        viterbi_path[-1] = M - 1
+    else:
+        viterbi_path[-1] = np.argmax(viterbi_loglik[-1])
+
+    for t in range(N-2, -1, -1): # At each N-2, N-3, N-4...
+        viterbi_path[t] = backptr[t+1, viterbi_path[t+1]] # Best state to reach state in viterbi_path[t+1]
+
+    return viterbi_loglik, viterbi_path
+
+
+
 def statePosteriors(log_alpha, log_beta):
     """State posterior (gamma) probabilities in log domain.
 
@@ -262,6 +288,8 @@ comp_equal=np.allclose(log_likelihood, example['loglik']) # True if both arrays 
 
 print(f'\n**Computed log likelihood ({log_likelihood}) and example[logalik] ({example['loglik']}) give very simmilar results: {comp_equal}. ')
 
+
+"""
 phoneHMMs_all = np.load('lab2_models_all.npz', allow_pickle=True)['phoneHMMs'].item() #Load HMMs with multiple speakers
 
 
@@ -362,4 +390,24 @@ ax.set_title('Confusion Matrix - All Speakers')
 
 fig.colorbar(ax.images[0])
 
+plt.show()
+"""
+# 5.3
+M = lpr.shape[1]
+hmm=wordHMMs['o'] 
+viterbi_loglik, viterbi_best_path = viterbi(lpr,np.log(hmm['startprob'][:M]),np.log(hmm['transmat'][:M, :M]))
+viterbi_final = np.max(viterbi_loglik[-1])
+
+comp_equal=np.allclose(viterbi_final, example['vloglik']) # True if both arrays are almost equal, with a given tolerance
+
+print(f'\n**Viterbi final output and example[vloglik] give very simmilar results: {comp_equal}')
+
+plt.imshow(forward_logalpha.T, aspect='auto', origin='lower', cmap='viridis')
+plt.colorbar(label='log alpha')
+
+plt.plot(viterbi_best_path, color='red', linewidth=2)
+
+plt.title("Alpha (forward) + Viterbi path")
+plt.xlabel("Time")
+plt.ylabel("State")
 plt.show()
