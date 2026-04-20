@@ -2,6 +2,8 @@ import numpy as np
 from lab2_tools import *
 from prondict import prondict
 import matplotlib.pyplot as plt
+from lab1_proto import mfcc
+import lab1_tools
 
 # already implemented
 def concatTwoHMMs(hmm1, hmm2):
@@ -115,18 +117,18 @@ def forward(log_emlik, log_startprob, log_transmat):
     Output:
         forward_prob: NxM array of forward log probabilities for each of the M states in the model
     """
-    logalpha = np.zeros((log_emlik.shape))
+
+    N, M = log_emlik.shape
+    logalpha = np.zeros((N, M))
 
     # Initialization
     logalpha[0] = log_startprob + log_emlik[0]
-
-    # Update
-    for i in range(1, len(log_emlik)):
-        for j in range(len(log_emlik[0])):
-            logalpha[i, j] = log_emlik[i, j] + logsumexp(
-                logalpha[i-1] + log_transmat[:, j]
+    # Recursion
+    for t in range(1, N):
+        for j in range(M):
+            logalpha[t, j] = log_emlik[t, j] + logsumexp(
+                logalpha[t-1] + log_transmat[:M, j]
             )
-
     return logalpha
 
 
@@ -243,11 +245,121 @@ for digit in list(sorted(prondict.keys())):
 
 # 5.2
 
-print(hmm['startprob'].shape)
-print(hmm['transmat'].shape)
-print(example['obsloglik'].shape)
-forward_logalpha = forward(example['obsloglik'],hmm['startprob'],hmm['transmat'])
+
+M = lpr.shape[1]
+hmm=wordHMMs['o'] 
+forward_logalpha = forward(lpr,np.log(hmm['startprob'][:M]),np.log(hmm['transmat'][:M, :M])) # :M to remove additional states (transition)
 
 comp_equal=np.allclose(forward_logalpha, example['logalpha']) # True if both arrays are almost equal, with a given tolerance
 
 print(f'\n**forward() output and example[logalpha] give very simmilar results: {comp_equal}')
+
+
+# Likelihood
+
+log_likelihood = logsumexp(forward_logalpha[-1]) # Only alpha_(N-1)
+comp_equal=np.allclose(log_likelihood, example['loglik']) # True if both arrays are almost equal, with a given tolerance
+
+print(f'\n**Computed log likelihood ({log_likelihood}) and example[logalik] ({example['loglik']}) give very simmilar results: {comp_equal}. ')
+
+phoneHMMs_all = np.load('lab2_models_all.npz', allow_pickle=True)['phoneHMMs'].item() #Load HMMs with multiple speakers
+
+
+wordHMMs_all = {}
+for digit in list(sorted(prondict.keys())):  # Concatenation to obtain word HMMs with multiple speakers
+
+    wordHMMs_all[digit] = concatHMMs(phoneHMMs_all, isolated[digit])
+
+results_one = []
+results_all = []
+
+for utterance in data:
+    log_likelihoods = []
+    log_likelihoods_all = []
+    words_one = []
+    words_all = []
+    samples = utterance['samples']
+    sr = utterance['samplingrate']
+    digit = utterance['digit']
+    gender = utterance['gender']
+    repetition = utterance['repetition']
+    
+    lmfcc = mfcc(samples, winlen = int(0.020*sr), winshift = int(0.01*sr), nfft=512, nceps=13)
+
+    for word, model in wordHMMs.items():
+        lpr_one=log_multivariate_normal_density_diag(lmfcc,model['means'],model['covars'])
+        M = lpr_one.shape[1]
+        forward_logalpha_one = forward(lpr_one,np.log(model['startprob'][:M]),np.log(model['transmat'][:M, :M]))
+        log_likelihood_one = logsumexp(forward_logalpha_one[-1])
+        log_likelihoods.append(log_likelihood_one)
+        words_one.append(word)
+
+    best_index = np.argmax(log_likelihoods)
+    predicted = words_one[best_index]
+
+    results_one.append((digit,predicted))
+
+    # For HMMs trained with multiple speakers
+    for word, model in wordHMMs_all.items():
+        lpr_all=log_multivariate_normal_density_diag(lmfcc,model['means'],model['covars'])
+        M = lpr_all.shape[1]
+        forward_logalpha_all = forward(lpr_all,np.log(model['startprob'][:M]),np.log(model['transmat'][:M, :M]))
+        log_likelihood_all = logsumexp(forward_logalpha_all[-1])
+        log_likelihoods_all.append(log_likelihood_all)
+        words_all.append(word)
+    
+    best_index_all = np.argmax(log_likelihoods_all)
+    predicted_all = words_all[best_index_all]
+
+    results_all.append((digit,predicted_all))
+
+accuracy_one = sum(t==p for t,p in results_one)/len(results_one)
+print(f"\nAccuracy for one speaker HMMs: {accuracy_one}")
+accuracy_all = sum(t==p for t,p in results_all)/len(results_all)
+print(f"Accuracy for multiple speakers HMMs: {accuracy_all}")
+
+# Heatmaps
+
+labels = sorted(list(wordHMMs.keys()))
+label_to_idx = {l:i for i,l in enumerate(labels)}
+
+cm_one = np.zeros((len(labels),len(labels)))
+for t,p in results_one:
+    cm_one[label_to_idx[t],label_to_idx[p]] += 1
+
+fig, ax = plt.subplots()
+
+ax.imshow(cm_one, cmap='Blues')
+ax.set_xticks(range(len(labels)))
+ax.set_yticks(range(len(labels)))
+ax.set_xticklabels(labels)
+ax.set_yticklabels(labels)
+ax.set_xlabel('Predicted')
+ax.set_ylabel('True')
+ax.set_title('Confusion Matrix - Single Speaker')
+
+fig.colorbar(ax.images[0])
+
+plt.show()
+
+labels = sorted(list(wordHMMs_all.keys()))
+label_to_idx = {l:i for i,l in enumerate(labels)}
+
+cm_all= np.zeros((len(labels),len(labels)))
+for t,p in results_all:
+    cm_all[label_to_idx[t],label_to_idx[p]] += 1
+
+fig, ax = plt.subplots()
+
+ax.imshow(cm_all, cmap='Blues')
+ax.set_xticks(range(len(labels)))
+ax.set_yticks(range(len(labels)))
+ax.set_xticklabels(labels)
+ax.set_yticklabels(labels)
+ax.set_xlabel('Predicted')
+ax.set_ylabel('True')
+ax.set_title('Confusion Matrix - All Speakers')
+
+fig.colorbar(ax.images[0])
+
+plt.show()
