@@ -124,6 +124,7 @@ def forward(log_emlik, log_startprob, log_transmat):
     # initialisation (frame / timestep 0)
     log_alpha[0] = log_startprob[:nr_em_states] + log_emlik[0]
     
+    # recursion
     for frame_idx in range(1, nr_frames):
         for next_state_idx in range(nr_em_states):
             log_alpha[frame_idx, next_state_idx] = (
@@ -132,18 +133,6 @@ def forward(log_emlik, log_startprob, log_transmat):
 
     return log_alpha
 
-
-def backward(log_emlik, log_startprob, log_transmat):
-    """Backward (beta) probabilities in log domain.
-
-    Args:
-        log_emlik: NxM array of emission log likelihoods, N frames, M states
-        log_startprob: log probability to start in state i
-        log_transmat: transition log probability from state i to j
-
-    Output:
-        backward_prob: NxM array of backward log probabilities for each of the M states in the model
-    """
 
 def viterbi(log_emlik, log_startprob, log_transmat, forceFinalState=True):
     """Viterbi path.
@@ -159,6 +148,56 @@ def viterbi(log_emlik, log_startprob, log_transmat, forceFinalState=True):
         viterbi_loglik: log likelihood of the best path
         viterbi_path: best path
     """
+    # very similar to forward except for recursive max (instead of sum) and backtracing housekeeping
+    nr_frames, nr_em_states= log_emlik.shape
+
+    log_v = np.zeros((nr_frames, nr_em_states))
+    bt = np.zeros((nr_frames, nr_em_states), dtype=int)
+
+    ### computation of forward path probabilities (use provided recursion formulas)
+
+    # initialisation (frame / timestep 0)
+    log_v[0] = log_startprob[:nr_em_states] + log_emlik[0]
+
+    # recursion
+    for current_frame_idx in range(1, nr_frames):
+        for next_state_idx in range(nr_em_states):
+            next_state_scores = log_v[current_frame_idx-1] + log_transmat[:nr_em_states, next_state_idx]
+
+            bt[current_frame_idx, next_state_idx] = np.argmax(next_state_scores)
+            log_v[current_frame_idx, next_state_idx] = next_state_scores[bt[current_frame_idx, next_state_idx]] + log_emlik[current_frame_idx, next_state_idx]
+
+
+    # Termination: force ending in the last emitting state, or pick the best
+    if forceFinalState:
+        last_state = nr_em_states - 1
+    else:
+        last_state = int(np.argmax(log_v[-1]))
+
+    viterbi_loglik = log_v[-1, last_state]
+
+    # Backtracking
+    viterbi_path = np.zeros(nr_frames, dtype=int)
+    viterbi_path[-1] = last_state
+
+    for t in range(nr_frames-1, 0, -1):     # no predecessor for frame 0
+        viterbi_path[t-1] = bt[t, viterbi_path[t]]
+
+    return viterbi_loglik, viterbi_path
+
+
+def backward(log_emlik, log_startprob, log_transmat):
+    """Backward (beta) probabilities in log domain.
+
+    Args:
+        log_emlik: NxM array of emission log likelihoods, N frames, M states
+        log_startprob: log probability to start in state i
+        log_transmat: transition log probability from state i to j
+
+    Output:
+        backward_prob: NxM array of backward log probabilities for each of the M states in the model
+    """
+
 
 def statePosteriors(log_alpha, log_beta):
     """State posterior (gamma) probabilities in log domain.

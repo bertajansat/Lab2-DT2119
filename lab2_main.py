@@ -104,9 +104,14 @@ for utt_idx, utt in enumerate(data):
 
         utt_log_liks_onespkr[utt_idx, digit_idx] = logsumexp(logalpha_utt_model[-1])
 
+true_digit_seq = [utt['digit'] for utt in data]
+print('True digit sequence in dataset:', true_digit_seq)                    # first man, then female speaker
+
 predicted_digits_onespkr = [digits[max_idx] for max_idx in np.argmax(utt_log_liks_onespkr, axis=1)]
+correct_onepspkr = sum(p == t for p, t in zip(predicted_digits_onespkr, true_digit_seq))
 
 print('Predicted digits (single speaker models)', predicted_digits_onespkr)     # quite bad for male speaker (obviously)
+print('Number of misclass (single speaker models)', len(data)-correct_onepspkr)
 
 
 # -> all-speakers word-level HMMs
@@ -128,11 +133,56 @@ for utt_idx, utt in enumerate(data):
         utt_log_liks_all[utt_idx, digit_idx] = logsumexp(logalpha_utt_model[-1])
 
 predicted_digits_all = [digits[max_idx] for max_idx in np.argmax(utt_log_liks_all, axis=1)]
-true_digit_seq = [utt['digit'] for utt in data]
+correct_all = sum(p == t for p, t in zip(predicted_digits_all, true_digit_seq))
 
 print('Predicted digits (all speakers models)', predicted_digits_all)       # quite on point!
-print('True digit sequence in dataset:', true_digit_seq)                    # first man, then female speaker
+print('Number of misclass (all speaker models)', len(data)-correct_all)
 
 
 
 # 5.3
+
+vloglik, vpath = viterbi(
+    example['obsloglik'],
+    np.log(isodigit_HMMs_onespkr['o']['startprob']),
+    np.log(isodigit_HMMs_onespkr['o']['transmat'])
+)
+
+# verification of result consistency
+print('Results are matching for Viterbi algorithm:', np.allclose(vloglik, example['vloglik']))
+
+# plot overlay of Viterbi-approximated best path over forward probabilities
+plt.figure(figsize=(10, 4))
+plt.pcolormesh(log_alpha.T)  
+plt.plot(np.arange(len(vpath)) + 0.5, vpath + 0.5, 'r-', linewidth=2)
+plt.title("logalpha with Viterbi path overlaid")
+plt.xlabel("time frame"); plt.ylabel("state")
+plt.colorbar(label="log α")
+plt.tight_layout()
+plt.savefig('viterbi.png')
+
+# various performance evaluations (especially versus forward algo)
+viterbi_scores_utt_model = np.empty(shape=(len(data), len(digits)))
+
+for utt_idx, utt in enumerate(data):
+    for digit_idx, digit in enumerate(digits):
+        isodigit_hmm = isodigit_HMMs_onespkr[digit]
+        obslog = log_multivariate_normal_density_diag(
+            utt['lmfcc'],
+            isodigit_hmm['means'],
+            isodigit_hmm['covars'])
+        viterbi_loglik, _ = viterbi(obslog,
+            np.log(isodigit_hmm['startprob']),
+            np.log(isodigit_hmm['transmat']))
+        viterbi_scores_utt_model[utt_idx, digit_idx] = viterbi_loglik
+
+v_predicted = [digits[i] for i in viterbi_scores_utt_model.argmax(axis=1)]
+v_correct = sum(p == t for p, t in zip(v_predicted, true_digit_seq))
+print('Predicted digits (single speaker models, Viterbi)', v_predicted)
+
+forward_errs = {utt_idx for utt_idx,(p,t) in enumerate(zip(predicted_digits_onespkr, true_digit_seq)) if p != t}
+viterbi_errs = {utt_idx for utt_idx,(p,t) in enumerate(zip(v_predicted, true_digit_seq)) if p != t}
+print("Forward errors:", forward_errs)
+print("Viterbi errors:", viterbi_errs)
+print("Only forward wrong:", forward_errs - viterbi_errs)
+print("Only viterbi wrong:", viterbi_errs - forward_errs)
