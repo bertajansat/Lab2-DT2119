@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def logsumexp(arr, axis=0):
     """Computes the sum of arr assuming arr is in the log domain.
     Returns log(sum(exp(arr))) while minimizing the possibility of

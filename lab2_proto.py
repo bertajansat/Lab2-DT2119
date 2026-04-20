@@ -1,5 +1,5 @@
 import numpy as np
-# from tools2 import *
+from lab2_tools import *
 
 
 # already implemented
@@ -109,13 +109,29 @@ def forward(log_emlik, log_startprob, log_transmat):
     """Forward (alpha) probabilities in log domain.
 
     Args:
-        log_emlik: NxM array of emission log likelihoods, N frames, M states
+        log_emlik: NxM array of emission log likelihoods, N frames, M emitting (!!) states
         log_startprob: log probability to start in state i
         log_transmat: log transition probability from state i to j
 
     Output:
-        forward_prob: NxM array of forward log probabilities for each of the M states in the model
+        forward_prob: NxM array of forward log probabilities for each of the M emitting states in the model
     """
+    nr_frames, nr_em_states = log_emlik.shape
+
+    ### computation of forward path probabilities (use provided recursion formulas)
+    log_alpha = np.empty(shape=(nr_frames, nr_em_states))
+
+    # initialisation (frame / timestep 0)
+    log_alpha[0] = log_startprob[:nr_em_states] + log_emlik[0]
+    
+    for frame_idx in range(1, nr_frames):
+        for next_state_idx in range(nr_em_states):
+            log_alpha[frame_idx, next_state_idx] = (
+                logsumexp(log_alpha[frame_idx - 1] + log_transmat[:nr_em_states, next_state_idx]) + log_emlik[frame_idx, next_state_idx]
+            )
+
+    return log_alpha
+
 
 def backward(log_emlik, log_startprob, log_transmat):
     """Backward (beta) probabilities in log domain.
