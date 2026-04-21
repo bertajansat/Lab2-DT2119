@@ -186,3 +186,16 @@ print("Forward errors:", forward_errs)
 print("Viterbi errors:", viterbi_errs)
 print("Only forward wrong:", forward_errs - viterbi_errs)
 print("Only viterbi wrong:", viterbi_errs - forward_errs)
+
+
+
+# 5.4
+
+log_beta = backward(
+    example['obsloglik'],
+    np.log(isodigit_HMMs_onespkr['o']['startprob']),
+    np.log(isodigit_HMMs_onespkr['o']['transmat'])
+)
+
+# verification of result consistency
+print('Results are matching for backward algorithm:', np.allclose(log_beta, example['logbeta']))

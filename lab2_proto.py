@@ -151,10 +151,9 @@ def viterbi(log_emlik, log_startprob, log_transmat, forceFinalState=True):
     # very similar to forward except for recursive max (instead of sum) and backtracing housekeeping
     nr_frames, nr_em_states= log_emlik.shape
 
+    ### computation of forward path probabilities (use provided recursion formulas)
     log_v = np.zeros((nr_frames, nr_em_states))
     bt = np.zeros((nr_frames, nr_em_states), dtype=int)
-
-    ### computation of forward path probabilities (use provided recursion formulas)
 
     # initialisation (frame / timestep 0)
     log_v[0] = log_startprob[:nr_em_states] + log_emlik[0]
@@ -197,6 +196,24 @@ def backward(log_emlik, log_startprob, log_transmat):
     Output:
         backward_prob: NxM array of backward log probabilities for each of the M states in the model
     """
+
+    # very similar to forward except that now we walk backwards instead of forward
+    nr_frames, nr_em_states = log_emlik.shape
+
+    ### computation of backward path probabilities (use provided recursion formulas)
+    log_beta = np.empty(shape=(nr_frames, nr_em_states))
+
+    # initialisation (frame / timestep nr_frames-1)
+    log_beta[-1] = 0
+
+    # recursion
+    for frame_idx in range(nr_frames-2, -1, -1):
+        for state_idx in range(nr_em_states): 
+            log_beta[frame_idx, state_idx] = logsumexp(
+                log_transmat[state_idx, :nr_em_states] + log_emlik[frame_idx + 1] + log_beta[frame_idx + 1]
+            )
+
+    return log_beta
 
 
 def statePosteriors(log_alpha, log_beta):
