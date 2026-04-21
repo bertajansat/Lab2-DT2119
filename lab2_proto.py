@@ -228,6 +228,11 @@ def statePosteriors(log_alpha, log_beta):
         log_gamma: NxM array of gamma probabilities for each of the M states in the model
     """
 
+    log_px = logsumexp(log_alpha[-1])
+    log_gamma = log_alpha + log_beta - log_px
+
+    return log_gamma
+
 def updateMeanAndVar(X, log_gamma, varianceFloor=5.0):
     """ Update Gaussian parameters with diagonal covariance
 
@@ -243,3 +248,19 @@ def updateMeanAndVar(X, log_gamma, varianceFloor=5.0):
          means: MxD mean vectors for each state
          covars: MxD covariance (variance) vectors for each state
     """
+    gamma = np.exp(log_gamma)
+    gamma_sum = gamma.sum(axis=0)
+
+    # means[j] = sum_n gamma[n,j] * X[n] / sum_n gamma[n,j]
+    means  = (gamma.T @ X) / gamma_sum[:, None]
+
+    # covars[j, d] = sum_n gamma[n,j] * (X[n,d] - means[j,d])^2 / sum_n gamma[n,j]
+    covars = np.zeros_like(means)
+    for j in range(means.shape[0]):
+        diff = X - means[j]
+        covars[j] = (gamma[:, j][:, None] * diff**2).sum(axis=0) / gamma_sum[j]
+
+    # variance flooring for numeric stability
+    covars = np.maximum(covars, varianceFloor)
+
+    return means, covars

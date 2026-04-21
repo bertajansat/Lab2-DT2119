@@ -143,7 +143,7 @@ print('Number of misclass (all speaker models)', len(data)-correct_all)
 # 5.3
 
 vloglik, vpath = viterbi(
-    example['obsloglik'],
+    log_emlik,
     np.log(isodigit_HMMs_onespkr['o']['startprob']),
     np.log(isodigit_HMMs_onespkr['o']['transmat'])
 )
@@ -199,3 +199,103 @@ log_beta = backward(
 
 # verification of result consistency
 print('Results are matching for backward algorithm:', np.allclose(log_beta, example['logbeta']))
+
+
+
+### SECTION 6
+
+# 6.1
+
+log_gamma = statePosteriors(log_alpha, log_beta)
+row_sums = np.exp(log_gamma).sum(axis=1)
+
+# verification of result consistency
+print('Results are matching for log gamma probs:', np.allclose(log_gamma, example['loggamma']))
+print('... and normalisation of gamma probs is also correct', np.allclose(row_sums, np.array(1)))
+
+
+# transform emission probability distributions into single GMM model         
+log_norm = np.array([logsumexp(log_emlik[n]) for n in range(log_emlik.shape[0])]) # treat each frame in isolation
+log_gamma_gmm = log_emlik - log_norm[:, None]                                     # normalisation (in log domain)
+
+# verification of probability semantics
+print("GMM row normalisation is correct:", np.allclose(np.exp(log_gamma_gmm).sum(axis=1)[:5], np.array([1])))
+
+# Plot side by side
+fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+axes[0].pcolormesh(np.exp(log_gamma).T, vmin=0, vmax=1)
+axes[0].set_title("HMM γ (forward-backward)")
+axes[0].set_xlabel("frame")
+axes[0].set_ylabel("state")
+axes[1].pcolormesh(np.exp(log_gamma_gmm).T, vmin=0, vmax=1)
+axes[1].set_title("GMM γ (independent frames)")
+axes[1].set_xlabel("frame")
+plt.tight_layout()
+plt.savefig('hmm_vs_gmm.png')
+
+# dimensional summings of HMM posteriors
+lin_gamma = np.exp(log_gamma)
+
+time_summed_posteriors = np.sum(lin_gamma, axis=0)  # -> expected number of frames spent in state i in utterance
+time_state_summed_posteriors = np.sum(lin_gamma)    # -> should sum to number of frames due to row normalisation
+
+
+# 6.2
+
+# Baum-Welch algorithm
+def baum_welch(X, hmm, max_iter=20, lik_increase=1.0):
+    # avoiding overwriting via reference sharing
+    means  = hmm['means'].copy()
+    covars = hmm['covars'].copy()
+
+    log_pi  = np.log(hmm['startprob'])
+    log_A   = np.log(hmm['transmat'])
+
+    history = []
+    prev_loglik = -np.inf
+    for it in range(max_iter):
+        # expectation step
+        log_em = log_multivariate_normal_density_diag(X, means, covars)
+        la = forward (log_em, log_pi, log_A)
+        lb = backward(log_em, log_pi, log_A)
+        ll = logsumexp(la[-1])
+        history.append(ll)
+        
+        print(f"  Iteration {it:2d}: log-likehood = {ll:.4f}")
+
+        if it > 0 and ll - prev_loglik < lik_increase:
+            print(f"  Converged! (log-likelihood increase below {lik_increase})")
+            break
+
+        prev_loglik = ll
+
+        # maximisation step
+        lg = statePosteriors(la, lb)
+        means, covars = updateMeanAndVar(X, lg)
+
+    return means, covars, history
+
+
+utt = data[10]
+digit = utt['digit']
+print("Utterance:", digit)
+
+# start from matching model
+print(f"\nStart from word HMM (matching digit {digit})")
+_, _, hist_match = baum_welch(utt['lmfcc'], isodigit_HMMs_all['4'])
+
+# start from mismatching model
+mismatch_digit = '7'
+print(f"\nStart from word HMM (mismatching digit {mismatch_digit})")
+_, _, hist_mis = baum_welch(utt['lmfcc'], isodigit_HMMs_all[mismatch_digit])
+
+# side-by-side plotting for comparison
+plt.figure(figsize=(8, 4))
+plt.plot(hist_match, 'o-', label=f"init = {digit} (match)")
+plt.plot(hist_mis, 's-', label=f"init = {mismatch_digit} (mismatch)")
+plt.xlabel("iteration")
+plt.ylabel("log P(X|θ)")
+plt.legend()
+plt.title(f"Baum-Welch convergence on {digit}")
+plt.tight_layout()
+plt.savefig('baum-welch.png')
